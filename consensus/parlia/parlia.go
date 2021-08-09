@@ -46,8 +46,8 @@ const (
 	inMemorySnapshots  = 128  // Number of recent snapshots to keep in memory
 	inMemorySignatures = 4096 // Number of recent block signatures to keep in memory
 
-	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
-	defaultEpochLength = uint64(100) // Default number of blocks of checkpoint to update validatorSet from contract
+	checkpointInterval = 3        // Number of blocks after which to save the snapshot to the database
+	defaultEpochLength = uint64(2) // Default number of blocks of checkpoint to update validatorSet from contract
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -75,7 +75,6 @@ var (
 		common.HexToAddress(systemcontracts.LightClientContract):        true,
 		common.HexToAddress(systemcontracts.RelayerHubContract):         true,
 		common.HexToAddress(systemcontracts.GovHubContract):             true,
-		common.HexToAddress(systemcontracts.TokenHubContract):           true,
 		common.HexToAddress(systemcontracts.RelayerIncentivizeContract): true,
 		common.HexToAddress(systemcontracts.CrossChainContract):         true,
 	}
@@ -565,7 +564,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	}
 
 	if _, ok := snap.Validators[signer]; !ok {
-		return errUnauthorizedValidator
+		return errors.New("unauthorized validator - 1")
 	}
 
 	for seen, recent := range snap.Recents {
@@ -614,6 +613,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
+	log.Info("==========================", "number", number, "Epoch", p.config.Epoch)
 	if number%p.config.Epoch == 0 {
 		newValidators, err := p.getCurrentValidators(header.ParentHash)
 		if err != nil {
@@ -623,6 +623,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		sort.Sort(validatorsAscending(newValidators))
 		for _, validator := range newValidators {
 			header.Extra = append(header.Extra, validator.Bytes()...)
+			log.Info("==========================", "number", number, "Validator", validator.Bytes())
 		}
 	}
 
@@ -829,7 +830,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 
 	// Bail out if we're unauthorized to sign a block
 	if _, authorized := snap.Validators[val]; !authorized {
-		return errUnauthorizedValidator
+		return errors.New("unauthorized validator - 2")
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -967,6 +968,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash) ([]common.Address, 
 	for i, a := range *ret0 {
 		valz[i] = a
 	}
+	log.Error("==============================", "error", len(valz))
 	return valz, nil
 }
 
@@ -1029,7 +1031,6 @@ func (p *Parlia) initContract(state *state.StateDB, header *types.Header, chain 
 		systemcontracts.SlashContract,
 		systemcontracts.LightClientContract,
 		systemcontracts.RelayerHubContract,
-		systemcontracts.TokenHubContract,
 		systemcontracts.RelayerIncentivizeContract,
 		systemcontracts.CrossChainContract,
 	}

@@ -46,7 +46,7 @@ var FullNodeGPO = gasprice.Config{
 	Blocks:          20,
 	Percentile:      60,
 	MaxPrice:        gasprice.DefaultMaxPrice,
-	OracleThreshold: 1000,
+	OracleThreshold: 20,
 }
 
 // LightClientGPO contains default gasprice oracle settings for light client.
@@ -56,7 +56,7 @@ var LightClientGPO = gasprice.Config{
 	MaxPrice:   gasprice.DefaultMaxPrice,
 }
 
-// Defaults contains default settings for use on the Ethereum main net.
+// Defaults contains default settings for use on the Factory main net.
 var Defaults = Config{
 	SyncMode: downloader.FastSync,
 	Ethash: ethash.Config{
@@ -68,7 +68,7 @@ var Defaults = Config{
 		DatasetsOnDisk:   2,
 		DatasetsLockMmap: false,
 	},
-	NetworkId:               1,
+	NetworkId:               1997,
 	TxLookupLimit:           2350000,
 	LightPeers:              100,
 	UltraLightFraction:      75,
@@ -81,10 +81,10 @@ var Defaults = Config{
 	TriesInMemory:           128,
 	SnapshotCache:           102,
 	Miner: miner.Config{
-		GasFloor:      8000000,
-		GasCeil:       8000000,
-		GasPrice:      big.NewInt(params.GWei),
-		Recommit:      3 * time.Second,
+		GasFloor:      30000000,
+		GasCeil:       40000000,
+		GasPrice:      big.NewInt(1000000000),
+		Recommit:      10000000000,
 		DelayLeftOver: 50 * time.Millisecond,
 	},
 	TxPool:      core.DefaultTxPoolConfig,
