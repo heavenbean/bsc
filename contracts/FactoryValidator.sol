@@ -204,8 +204,8 @@ contract FactoryValidator {
         SuperAdminAddr = msg.sender;
 
         Validator memory val;
-        val.consensusAddress = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
-        val.feeAddress = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
+        val.consensusAddress = 0xc257D91bF0129064340C037d9F9b29464638a351;
+        val.feeAddress = 0xc257D91bF0129064340C037d9F9b29464638a351;
         val.votingPower = 1000;
         currentValidatorSet.push(val);
         currentValidatorSetMap[val.consensusAddress] = 1;
