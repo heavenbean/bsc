@@ -72,11 +72,6 @@ var (
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
 		common.HexToAddress(systemcontracts.SlashContract):              true,
 		common.HexToAddress(systemcontracts.SystemRewardContract):       true,
-		common.HexToAddress(systemcontracts.LightClientContract):        true,
-		common.HexToAddress(systemcontracts.RelayerHubContract):         true,
-		common.HexToAddress(systemcontracts.GovHubContract):             true,
-		common.HexToAddress(systemcontracts.RelayerIncentivizeContract): true,
-		common.HexToAddress(systemcontracts.CrossChainContract):         true,
 	}
 )
 
@@ -1029,10 +1024,6 @@ func (p *Parlia) initContract(state *state.StateDB, header *types.Header, chain 
 	contracts := []string{
 		systemcontracts.ValidatorContract,
 		systemcontracts.SlashContract,
-		systemcontracts.LightClientContract,
-		systemcontracts.RelayerHubContract,
-		systemcontracts.RelayerIncentivizeContract,
-		systemcontracts.CrossChainContract,
 	}
 	// get packed data
 	data, err := p.validatorSetABI.Pack(method)
