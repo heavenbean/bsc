@@ -7,7 +7,7 @@ Binance Smart Chain starts its development based on go-ethereum fork. So you may
 [![API Reference](
 https://camo.githubusercontent.com/915b7be44ada53c290eb157634330494ebe3e30a/68747470733a2f2f676f646f632e6f72672f6769746875622e636f6d2f676f6c616e672f6764646f3f7374617475732e737667
 )](https://pkg.go.dev/github.com/ethereum/go-ethereum?tab=doc)
-[![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/5Z3C3SdxDw)
+[![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/z2VpC455eU)
 
 But from that baseline of EVM compatible, Binance Smart Chain introduces  a system of 21 validators with Proof of Staked Authority (PoSA) consensus that can support short block time and lower fees. The most bonded validator candidates of staking will become validators and produce blocks. The double-sign detection and other slashing logic guarantee security, stability, and chain finality.
 
@@ -124,7 +124,7 @@ This command will:
 
 Steps:
 
-1. Download the binary, config and genesis files from [release](https://github.com/binance-chain/bsc/releases/download/v1.0.0-alpha.0/binary.zip), or compile the binary by `make geth`. 
+1. Download the binary, config and genesis files from [release](https://github.com/bnb-chain/bsc/releases/tag/v1.1.10), or compile the binary by `make geth`. 
 2. Init genesis state: `./geth --datadir node init genesis.json`.
 3. Start your fullnode: `./geth --config ./config.toml --datadir ./node`.
 4. Or start a validator node: `./geth --config ./config.toml --datadir ./node -unlock ${validatorAddr} --mine --allow-insecure-unlock`. The ${validatorAddr} is the wallet account address of your running validator node. 
@@ -203,7 +203,7 @@ from anyone on the internet, and are grateful for even the smallest of fixes!
 
 If you'd like to contribute to bsc, please fork, fix, commit and send a pull request
 for the maintainers to review and merge into the main code base. If you wish to submit
-more complex changes though, please check up with the core devs first on [our discord channel](https://discord.gg/5Z3C3SdxDw)
+more complex changes though, please check up with the core devs first on [our discord channel](https://discord.gg/z2VpC455eU)
 to ensure those changes are in line with the general philosophy of the project and/or get
 some early feedback which can make both your efforts much lighter as well as our review
 and merge procedures quick and simple.

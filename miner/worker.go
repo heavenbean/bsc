@@ -130,6 +130,7 @@ type intervalAdjust struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
+	prefetcher  core.Prefetcher
 	config      *Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
@@ -196,6 +197,7 @@ type worker struct {
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *worker {
 	worker := &worker{
+		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
 		config:             config,
 		chainConfig:        chainConfig,
 		engine:             engine,
@@ -389,6 +391,17 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			}
 			clearPending(head.Block.NumberU64())
 			timestamp = time.Now().Unix()
+			if p, ok := w.engine.(*parlia.Parlia); ok {
+				signedRecent, err := p.SignRecently(w.chain, head.Block.Header())
+				if err != nil {
+					log.Info("Not allowed to propose block", "err", err)
+					continue
+				}
+				if signedRecent {
+					log.Info("Signed recently, must wait")
+					continue
+				}
+			}
 			commit(true, commitInterruptNewHead)
 
 		case <-timer.C:
@@ -623,6 +636,7 @@ func (w *worker) resultLoop() {
 				logs = append(logs, receipt.Logs...)
 			}
 			// Commit block and state to database.
+			task.state.SetExpectedStateRoot(block.Root())
 			_, err := w.chain.WriteBlockWithState(block, receipts, logs, task.state, true)
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)
@@ -647,7 +661,7 @@ func (w *worker) resultLoop() {
 func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
-	state, err := w.chain.StateAt(parent.Root())
+	state, err := w.chain.StateAtWithSharedPool(parent.Root())
 	if err != nil {
 		return err
 	}
@@ -725,10 +739,10 @@ func (w *worker) updateSnapshot() {
 	w.snapshotState = w.current.state.Copy()
 }
 
-func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), receiptProcessors...)
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
@@ -747,7 +761,12 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 
 	if w.current.gasPool == nil {
 		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
-		w.current.gasPool.SubGas(params.SystemTxsGas)
+		if w.chain.Config().IsEuler(w.current.header.Number) {
+			w.current.gasPool.SubGas(params.SystemTxsGas * 3)
+		} else {
+			w.current.gasPool.SubGas(params.SystemTxsGas)
+		}
+
 	}
 
 	var coalescedLogs []*types.Log
@@ -758,6 +777,22 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		log.Debug("Time left for mining work", "left", (*delay - w.config.DelayLeftOver).String(), "leftover", w.config.DelayLeftOver)
 		defer stopTimer.Stop()
 	}
+
+	// initilise bloom processors
+	processorCapacity := 100
+	if txs.CurrentSize() < processorCapacity {
+		processorCapacity = txs.CurrentSize()
+	}
+	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
+
+	interruptCh := make(chan struct{})
+	defer close(interruptCh)
+	//prefetch txs from all pending txs
+	txsPrefetch := txs.Copy()
+	tx := txsPrefetch.Peek()
+	txCurr := &tx
+	w.prefetcher.PrefetchMining(txsPrefetch, w.current.header, w.current.gasPool.Gas(), w.current.state.Copy(), *w.chain.GetVMConfig(), interruptCh, txCurr)
+
 LOOP:
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
@@ -794,7 +829,7 @@ LOOP:
 			}
 		}
 		// Retrieve the next transaction and abort if all done
-		tx := txs.Peek()
+		tx = txs.Peek()
 		if tx == nil {
 			break
 		}
@@ -813,7 +848,7 @@ LOOP:
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase)
+		logs, err := w.commitTransaction(tx, coinbase, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -848,6 +883,7 @@ LOOP:
 			txs.Shift()
 		}
 	}
+	bloomProcessors.Close()
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
 		// We don't push the pendingLogsEvent while we are mining. The reason is that
@@ -974,6 +1010,13 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 // and commits new work if consensus engine is running.
 func (w *worker) commit(uncles []*types.Header, interval func(), update bool, start time.Time) error {
 	s := w.current.state
+	err := s.WaitPipeVerification()
+	if err != nil {
+		return err
+	}
+
+	s.CorrectAccountsRoot(w.chain.CurrentBlock().Root())
+
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(w.current.header), s, w.current.txs, uncles, w.current.receipts)
 	if err != nil {
 		return err
@@ -1000,29 +1043,10 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	return nil
 }
 
-// copyReceipts makes a deep copy of the given receipts.
-func copyReceipts(receipts []*types.Receipt) []*types.Receipt {
-	result := make([]*types.Receipt, len(receipts))
-	for i, l := range receipts {
-		cpy := *l
-		result[i] = &cpy
-	}
-	return result
-}
-
 // postSideBlock fires a side chain event, only use it for testing.
 func (w *worker) postSideBlock(event core.ChainSideEvent) {
 	select {
 	case w.chainSideCh <- event:
 	case <-w.exitCh:
 	}
-}
-
-// totalFees computes total consumed fees in ETH. Block transactions and receipts have to have the same order.
-func totalFees(block *types.Block, receipts []*types.Receipt) *big.Float {
-	feesWei := new(big.Int)
-	for i, tx := range block.Transactions() {
-		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), tx.GasPrice()))
-	}
-	return new(big.Float).Quo(new(big.Float).SetInt(feesWei), new(big.Float).SetInt(big.NewInt(params.Ether)))
 }
